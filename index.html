@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BATE-BOLA | Ateliê 3D</title><style>
+:root{font-family:system-ui,Arial;color:#f7f5ff;background:#11101c}*{box-sizing:border-box}body{margin:0}
+header{padding:16px 22px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #343045}
+h1{font-size:19px;margin:0}.tag{font-size:12px;color:#b9b4cf}
+main{display:grid;grid-template-columns:minmax(0,1fr) 280px;min-height:calc(100dvh - 64px)}
+#stage{position:relative;min-height:560px;touch-action:pan-y;cursor:grab;background:radial-gradient(ellipse at 50% 45%,#29243b 0%,#11101c 70%)}
+#stage:active{cursor:grabbing}canvas{display:block;width:100%;height:100%}
+#help{position:absolute;bottom:20px;left:0;right:0;text-align:center;color:#bdb7d0;font-size:13px;pointer-events:none}
+aside{padding:22px;border-left:1px solid #343045;background:#191624}label{display:block;margin:24px 0 9px;color:#c8c2dc;font-size:13px}
+button{background:#322b49;border:1px solid #655a84;color:white;padding:10px 13px;border-radius:9px;cursor:pointer}
+button:hover{background:#4d3c75}.buttons{display:flex;gap:8px;flex-wrap:wrap}input[type=color]{width:100%;height:44px;background:none;border:0}
+#status{font-size:12px;color:#aaa2c5;margin-top:26px;overflow-wrap:anywhere}
+@media(max-width:760px){main{grid-template-columns:1fr}#stage{min-height:60dvh;height:60dvh}aside{border-left:0;border-top:1px solid #343045}}
+</style></head><body><header><h1>BATE-BOLA <span class="tag">/ Ateliê 3D</span></h1><span class="tag" id="build-id">build: loading</span></header>
+<main><section id="stage" aria-label="Visualizador 3D do personagem"><div id="help">Arraste para os lados para girar 360° · Sem zoom ou deslocamento</div></section>
+<aside><strong>Visualizador de fantasia</strong><p class="tag">Estudo técnico de rotação. O modelo artístico definitivo será integrado depois.</p>
+<label>Orientação</label><div class="buttons"><button data-angle="0">Frente</button><button data-angle="1.57079632679">Lado</button><button data-angle="3.14159265359">Costas</button></div>
+<label>Cor principal</label><input type="color" id="color" value="#ed3c91">
+<label>Pose</label><div class="buttons"><button data-pose="down">Braços baixos</button><button data-pose="up">Braços altos</button></div>
+<p id="status">Carregando motor 3D…</p></aside></main>
+<script type="module">
+import * as THREE from 'https://esm.sh/three@0.160.1';
+const stage=document.querySelector('#stage'), status=document.querySelector('#status');
+const scene=new THREE.Scene();
+const camera=new THREE.OrthographicCamera(-2.4,2.4,3.6,-3.6,.1,100);
+camera.position.set(0,1.7,10);camera.lookAt(0,1.7,0);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));stage.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x3b255b,2.2));
+const light=new THREE.DirectionalLight(0xffffff,2.6);light.position.set(3,7,6);scene.add(light);
+const pivot=new THREE.Group();scene.add(pivot);
+const costume=new THREE.Group();pivot.add(costume);
+const fabric=new THREE.MeshStandardMaterial({color:'#ed3c91',roughness:.78,side:THREE.DoubleSide});
+const trim=new THREE.MeshStandardMaterial({color:'#f5d637',roughness:.9});
+const mask=new THREE.MeshStandardMaterial({color:'#f4f0fa',roughness:.65});
+const dark=new THREE.MeshStandardMaterial({color:'#241b31',roughness:.8});
+function mesh(geo,mat,x,y,z,rx=0,ry=0,rz=0){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);costume.add(m);return m}
+mesh(new THREE.CylinderGeometry(.22,.24,.65,16),dark,-.25,.35,0);
+mesh(new THREE.CylinderGeometry(.22,.24,.65,16),dark,.25,.35,0);
+mesh(new THREE.ConeGeometry(1.05,1.65,24,1,true),fabric,0,1.3,0,Math.PI);
+mesh(new THREE.SphereGeometry(.45,20,14),fabric,0,2.02,0);
+mesh(new THREE.SphereGeometry(.42,20,14),trim,0,2.52,0);
+mesh(new THREE.SphereGeometry(.31,20,14),mask,0,2.62,.23);
+const eyes=[-.13,.13];eyes.forEach(x=>mesh(new THREE.SphereGeometry(.045,12,8),dark,x,2.68,.515));
+const arms=[];
+for(const side of [-1,1]){const g=new THREE.Group();g.position.set(side*.42,2.13,0);costume.add(g);
+const sleeve=new THREE.Mesh(new THREE.SphereGeometry(.36,16,12),fabric);sleeve.position.set(side*.27,-.2,0);sleeve.scale.set(1.35,1.4,1.1);g.add(sleeve);
+const cuff=new THREE.Mesh(new THREE.SphereGeometry(.24,16,12),trim);cuff.position.set(side*.5,-.44,0);g.add(cuff);arms.push({g,side})}
+function pose(up){arms.forEach(({g,side})=>g.rotation.z=up?side*1.75:0)}
+pose(false);
+const ring=new THREE.Mesh(new THREE.TorusGeometry(.86,.09,8,40),trim);ring.rotation.x=Math.PI/2;ring.position.y=1.85;costume.add(ring);
+let dragging=false,lastX=0;
+stage.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;stage.setPointerCapture(e.pointerId)});
+stage.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-lastX;lastX=e.clientX;pivot.rotation.y+=dx*.012});
+stage.addEventListener('pointerup',()=>dragging=false);
+stage.addEventListener('pointercancel',()=>dragging=false);
+document.querySelectorAll('[data-angle]').forEach(b=>b.addEventListener('click',()=>pivot.rotation.y=Number(b.dataset.angle)));
+document.querySelectorAll('[data-pose]').forEach(b=>b.addEventListener('click',()=>pose(b.dataset.pose==='up')));
+document.querySelector('#color').addEventListener('input',e=>fabric.color.set(e.target.value));
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;const aspect=w/h;const halfH=1.95;camera.left=-halfH*aspect;camera.right=halfH*aspect;camera.top=halfH;camera.bottom=-halfH;camera.updateProjectionMatrix();renderer.setSize(w,h,false)}
+new ResizeObserver(resize).observe(stage);resize();
+renderer.setAnimationLoop(()=>renderer.render(scene,camera));
+const version='v0.1.0';document.querySelector('#build-id').textContent='build: '+version+' · '+(document.querySelector('meta[name=commit-sha]')?.content||'initial');
+status.textContent='Visualizador ativo · câmera fixa · rotação Y';
+</script></body></html>
