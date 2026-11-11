@@ -22,6 +22,7 @@ button:hover{background:#4d3c75}.buttons{display:flex;gap:8px;flex-wrap:wrap}inp
 <p id="status">Carregando motor 3D…</p></aside></main>
 <script type="module">
 import * as THREE from 'https://esm.sh/three@0.160.1';
+import {GLTFLoader} from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 const stage=document.querySelector('#stage'), status=document.querySelector('#status');
 const scene=new THREE.Scene();
 const camera=new THREE.OrthographicCamera(-2.4,2.4,3.6,-3.6,.1,100);
@@ -31,6 +32,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));stage.prepend(renderer.domE
 scene.add(new THREE.HemisphereLight(0xffffff,0x3b255b,2.2));
 const light=new THREE.DirectionalLight(0xffffff,2.6);light.position.set(3,7,6);scene.add(light);
 const pivot=new THREE.Group();scene.add(pivot);
+const modelSlot=new THREE.Group();pivot.add(modelSlot);
+let currentPose='down', glbModels=null;
 const costume=new THREE.Group();pivot.add(costume);
 const fabric=new THREE.MeshStandardMaterial({color:'#ed3c91',roughness:.78,side:THREE.DoubleSide});
 const trim=new THREE.MeshStandardMaterial({color:'#f5d637',roughness:.9});
@@ -48,7 +51,7 @@ const arms=[];
 for(const side of [-1,1]){const g=new THREE.Group();g.position.set(side*.42,2.13,0);costume.add(g);
 const sleeve=new THREE.Mesh(new THREE.SphereGeometry(.36,16,12),fabric);sleeve.position.set(side*.27,-.2,0);sleeve.scale.set(1.35,1.4,1.1);g.add(sleeve);
 const cuff=new THREE.Mesh(new THREE.SphereGeometry(.24,16,12),trim);cuff.position.set(side*.5,-.44,0);g.add(cuff);arms.push({g,side})}
-function pose(up){arms.forEach(({g,side})=>g.rotation.z=up?side*1.75:0)}
+function pose(up){currentPose=up?'up':'down';arms.forEach(({g,side})=>g.rotation.z=up?side*1.75:0);if(glbModels){modelSlot.clear();modelSlot.add(glbModels[currentPose]);costume.visible=false}}
 pose(false);
 // Costas: placa retangular fixa ao personagem, visível na rotação.
 const emblemCanvas=document.createElement('canvas');emblemCanvas.width=512;emblemCanvas.height=256;
@@ -71,6 +74,29 @@ document.querySelector('#color').addEventListener('input',e=>fabric.color.set(e.
 function resize(){const w=stage.clientWidth,h=stage.clientHeight;const aspect=w/h;const halfH=1.95;camera.left=-halfH*aspect;camera.right=halfH*aspect;camera.top=halfH;camera.bottom=-halfH;camera.updateProjectionMatrix();renderer.setSize(w,h,false)}
 new ResizeObserver(resize).observe(stage);resize();
 renderer.setAnimationLoop(()=>renderer.render(scene,camera));
-const version='v0.2.0-preview';document.querySelector('#build-id').textContent='build: '+version+' · '+(document.querySelector('meta[name=commit-sha]')?.content||'initial');
+// GLBs are optional until both assets are uploaded to public/models.
+async function loadCostumeModels(){
+ const loader=new GLTFLoader();
+ const load=path=>new Promise((resolve,reject)=>loader.load(path,g=>resolve(g.scene),undefined,reject));
+ try{
+  const [down,up]=await Promise.all([
+   load('/models/rodado_referencia_bracos_baixo.glb'),
+   load('/models/rodado_referencia_bracos_alto.glb')
+  ]);
+  // Recenter each model in local space; keep pivot at world origin.
+  const normalize=model=>{
+   const box=new THREE.Box3().setFromObject(model), center=box.getCenter(new THREE.Vector3());
+   const height=box.getSize(new THREE.Vector3()).y;
+   if(!Number.isFinite(height)||height<=0)throw Error('Invalid model bounds');
+   model.position.sub(center);model.position.y+=1.7;
+   return model;
+  };
+  glbModels={down:normalize(down),up:normalize(up)};
+  modelSlot.clear();modelSlot.add(glbModels[currentPose]);costume.visible=false;
+  status.textContent='GLBs carregados · câmera fixa · rotação Y';
+ }catch(error){console.info('GLBs not available; keeping procedural preview',error);status.textContent='Preview geométrico · GLBs ainda não publicados'}
+}
+loadCostumeModels();
+const version='v0.2.1-preview';document.querySelector('#build-id').textContent='build: '+version+' · '+(document.querySelector('meta[name=commit-sha]')?.content||'initial');
 status.textContent='Preview v0.2 · câmera fixa · rotação Y · personalização';
 </script></body></html>
