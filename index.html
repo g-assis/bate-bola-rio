@@ -15,13 +15,14 @@ button:hover{background:#4d3c75}.buttons{display:flex;gap:8px;flex-wrap:wrap}inp
 @media(max-width:760px){main{grid-template-columns:1fr}#stage{min-height:60dvh;height:60dvh}aside{border-left:0;border-top:1px solid #343045}}
 </style></head><body><header><h1>BATE-BOLA <span class="tag">/ Ateliê 3D</span></h1><span class="tag" id="build-id">build: loading</span></header>
 <main><section id="stage" aria-label="Visualizador 3D do personagem"><div id="help">Arraste para os lados para girar 360° · Sem zoom ou deslocamento</div></section>
-<aside><strong>Visualizador de fantasia</strong><p class="tag">Estudo técnico de rotação. O modelo artístico definitivo será integrado depois.</p>
+<aside><strong>Visualizador de fantasia</strong><p class="tag">Nova fantasia procedural para testar personalização e enquadramento. GLBs originais pendentes de migração.</p>
 <label>Orientação</label><div class="buttons"><button data-angle="0">Frente</button><button data-angle="1.57079632679">Lado</button><button data-angle="3.14159265359">Costas</button></div>
 <label>Cor principal</label><input type="color" id="color" value="#ed3c91">
-<label>Pose</label><div class="buttons"><button data-pose="down">Braços baixos</button><button data-pose="up">Braços altos</button></div>
+<label>Cor do acabamento</label><input type="color" id="trim-color" value="#f5d637"><label>Cor da máscara</label><input type="color" id="mask-color" value="#f4f0fa"><label>Emblema nas costas</label><input type="text" id="emblem-text" maxlength="12" value="BONDE" style="width:100%;padding:10px;border-radius:8px;background:#302a43;color:white;border:1px solid #655a84"><label>Pose</label><div class="buttons"><button data-pose="down">Braços baixos</button><button data-pose="up">Braços altos</button></div>
 <p id="status">Carregando motor 3D…</p></aside></main>
 <script type="module">
 import * as THREE from 'https://esm.sh/three@0.160.1';
+import {GLTFLoader} from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 const stage=document.querySelector('#stage'), status=document.querySelector('#status');
 const scene=new THREE.Scene();
 const camera=new THREE.OrthographicCamera(-2.4,2.4,3.6,-3.6,.1,100);
@@ -31,6 +32,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));stage.prepend(renderer.domE
 scene.add(new THREE.HemisphereLight(0xffffff,0x3b255b,2.2));
 const light=new THREE.DirectionalLight(0xffffff,2.6);light.position.set(3,7,6);scene.add(light);
 const pivot=new THREE.Group();scene.add(pivot);
+const modelSlot=new THREE.Group();pivot.add(modelSlot);
+let currentPose='down', glbModels=null;
 const costume=new THREE.Group();pivot.add(costume);
 const fabric=new THREE.MeshStandardMaterial({color:'#ed3c91',roughness:.78,side:THREE.DoubleSide});
 const trim=new THREE.MeshStandardMaterial({color:'#f5d637',roughness:.9});
@@ -48,8 +51,17 @@ const arms=[];
 for(const side of [-1,1]){const g=new THREE.Group();g.position.set(side*.42,2.13,0);costume.add(g);
 const sleeve=new THREE.Mesh(new THREE.SphereGeometry(.36,16,12),fabric);sleeve.position.set(side*.27,-.2,0);sleeve.scale.set(1.35,1.4,1.1);g.add(sleeve);
 const cuff=new THREE.Mesh(new THREE.SphereGeometry(.24,16,12),trim);cuff.position.set(side*.5,-.44,0);g.add(cuff);arms.push({g,side})}
-function pose(up){arms.forEach(({g,side})=>g.rotation.z=up?side*1.75:0)}
+function pose(up){currentPose=up?'up':'down';arms.forEach(({g,side})=>g.rotation.z=up?side*1.75:0);if(glbModels){modelSlot.clear();modelSlot.add(glbModels[currentPose]);costume.visible=false}}
 pose(false);
+// Costas: placa retangular fixa ao personagem, visível na rotação.
+const emblemCanvas=document.createElement('canvas');emblemCanvas.width=512;emblemCanvas.height=256;
+const emblemCtx=emblemCanvas.getContext('2d');const emblemTexture=new THREE.CanvasTexture(emblemCanvas);
+function redrawEmblem(value){emblemCtx.fillStyle='#271d48';emblemCtx.fillRect(0,0,512,256);emblemCtx.strokeStyle='#f5d637';emblemCtx.lineWidth=20;emblemCtx.strokeRect(12,12,488,232);emblemCtx.fillStyle='#ffffff';emblemCtx.font='bold 64px system-ui';emblemCtx.textAlign='center';emblemCtx.textBaseline='middle';emblemCtx.fillText((value||'BONDE').slice(0,12),256,128,470);emblemTexture.needsUpdate=true}
+redrawEmblem('BONDE');
+const emblem=new THREE.Mesh(new THREE.PlaneGeometry(.88,.47),new THREE.MeshBasicMaterial({map:emblemTexture,side:THREE.DoubleSide}));emblem.position.set(0,2.04,-.48);emblem.rotation.y=Math.PI;costume.add(emblem);
+document.querySelector('#emblem-text').addEventListener('input',e=>redrawEmblem(e.target.value));
+document.querySelector('#trim-color').addEventListener('input',e=>{trim.color.set(e.target.value);redrawEmblem(document.querySelector('#emblem-text').value)});
+document.querySelector('#mask-color').addEventListener('input',e=>mask.color.set(e.target.value));
 const ring=new THREE.Mesh(new THREE.TorusGeometry(.86,.09,8,40),trim);ring.rotation.x=Math.PI/2;ring.position.y=1.85;costume.add(ring);
 let dragging=false,lastX=0;
 stage.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;stage.setPointerCapture(e.pointerId)});
@@ -62,6 +74,29 @@ document.querySelector('#color').addEventListener('input',e=>fabric.color.set(e.
 function resize(){const w=stage.clientWidth,h=stage.clientHeight;const aspect=w/h;const halfH=1.95;camera.left=-halfH*aspect;camera.right=halfH*aspect;camera.top=halfH;camera.bottom=-halfH;camera.updateProjectionMatrix();renderer.setSize(w,h,false)}
 new ResizeObserver(resize).observe(stage);resize();
 renderer.setAnimationLoop(()=>renderer.render(scene,camera));
-const version='v0.1.0';document.querySelector('#build-id').textContent='build: '+version+' · '+(document.querySelector('meta[name=commit-sha]')?.content||'initial');
-status.textContent='Visualizador ativo · câmera fixa · rotação Y';
+// GLBs are optional until both assets are uploaded to public/models.
+async function loadCostumeModels(){
+ const loader=new GLTFLoader();
+ const load=path=>new Promise((resolve,reject)=>loader.load(path,g=>resolve(g.scene),undefined,reject));
+ try{
+  const [down,up]=await Promise.all([
+   load('/models/rodado_referencia_bracos_baixo.glb'),
+   load('/models/rodado_referencia_bracos_alto.glb')
+  ]);
+  // Recenter each model in local space; keep pivot at world origin.
+  const normalize=model=>{
+   const box=new THREE.Box3().setFromObject(model), center=box.getCenter(new THREE.Vector3());
+   const height=box.getSize(new THREE.Vector3()).y;
+   if(!Number.isFinite(height)||height<=0)throw Error('Invalid model bounds');
+   model.position.sub(center);model.position.y+=1.7;
+   return model;
+  };
+  glbModels={down:normalize(down),up:normalize(up)};
+  modelSlot.clear();modelSlot.add(glbModels[currentPose]);costume.visible=false;
+  status.textContent='GLBs carregados · câmera fixa · rotação Y';
+ }catch(error){console.info('GLBs not available; keeping procedural preview',error);status.textContent='Preview geométrico · GLBs ainda não publicados'}
+}
+loadCostumeModels();
+const version='v0.2.1-preview';document.querySelector('#build-id').textContent='build: '+version+' · '+(document.querySelector('meta[name=commit-sha]')?.content||'initial');
+status.textContent='Preview v0.2 · câmera fixa · rotação Y · personalização';
 </script></body></html>
